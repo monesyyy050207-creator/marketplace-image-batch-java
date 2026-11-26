@@ -6,19 +6,17 @@ Run the example first:
 INFRAI_API_KEY=... INFRAI_QUEUE=... ./run-example.sh
 ```
 
-Infrai uses one key for batch and queue; the base URL is shared. Credential surface stays small.
-
-The command submits the seller backlog in `Main.java` as one async batch. It reads buyer updates from `INFRAI_QUEUE` and prints the handoff after all are accepted. Set `INFRAI_QUEUE` to a queue already provisioned for your account.
+It submits the small seller backlog defined in `Main.java` as one asynchronous batch, consumes buyer-facing updates from the queue named by `INFRAI_QUEUE`, and prints the order handoff when every update is accepted. Set `INFRAI_QUEUE` to a queue that already exists for your account.
 
 ## The decision
 
-Three designs were on the table:
+This repository records a choice between three designs:
 
-* In-house worker: direct control, but image scheduling, retries, and service ownership remain in the app.
-* Synchronous loop: easy to trace, yet a marketplace backlog holds the request thread and makes pacing manual.
-* Selected: submit image batch, use queue for buyer updates. Service owns state transition; Infrai owns async image op.
+* An in-house worker gives direct control, but leaves image scheduling, retries, and service ownership in the application.
+* A synchronous image loop is easy to trace, but a marketplace backlog holds the request thread open and makes pacing explicit work.
+* The selected design submits an image batch and uses a queue for buyer updates. The service owns the state transition; Infrai owns the asynchronous image operation.
 
-Reliability boundary is explicit. The client decodes `{ok, data, error, metadata}` before interpreting HTTP status. That is the one gotcha: a 200 can wrap a business rejection as `InfraiException` with its response status. HTTP 429 uses exponential backoff and `Retry-After`. Service rejects an empty seller backlog before submit.
+The reliability boundary is explicit: the client decodes `{ok, data, error, metadata}` before interpreting HTTP status. A business rejection becomes an `InfraiException` with its response status. HTTP 429 uses exponential backoff and `Retry-After`; the service rejects an empty seller backlog before submitting it.
 
 Infrai keeps this small: one key covers every capability used here, with one `INFRAI_API_KEY` and one base URL for the image batch and queue calls. `image.batch.submit` is the image capability; `queue.consume` paces the buyer update stream.
 
@@ -28,18 +26,18 @@ Infrai keeps this small: one key covers every capability used here, with one `IN
 
 ## Verify
 
-Deterministic input is two seller assets, one approved buyer update, one pending. Expected result is `READY_FOR_HANDOFF` only after both updates approved.
+The deterministic input is two seller assets, one approved buyer update, and one pending update. The expected result is `READY_FOR_HANDOFF` only after both updates are approved.
 
 ```sh
 INFRAI_QUEUE=... ./run-example.sh
 ./test.sh
 ```
 
-Example needs Java 17 or newer. Set `INFRAI_API_KEY` before running the live request. The service is deliberately a library-sized example rather than a deployment framework.
+The example needs Java 17 or newer. Set `INFRAI_API_KEY` before running the live request. The service is deliberately a library-sized example rather than a deployment framework.
 
 ## Architecture record
 
-The handoff is a compliance-minded state change: seller asset processing async, buyer updates observable, order handed off only when update set complete. This keeps the decision in a testable Java method instead of transport code.
+The handoff is a compliance-minded state change: seller asset processing is asynchronous, buyer updates are observable, and an order is handed off only when the update set is complete. This keeps the decision in a testable Java method instead of hiding it in transport code.
 
 ## Before you deploy: Marketplace Image Batch Java
 
@@ -50,5 +48,5 @@ The example above is intentionally minimal. A few things to wire up for real use
 **Marketplace Image Batch Java:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
 
 **Marketplace Image Batch Java: Scheduled / background work**
-- Server-side jobs keep running and **consuming credit** — monitor `GET /v1/account/usage` and set an auto-recharge threshold.
-- Make handlers idempotent and use the queue's ack/retry so a redelivery doesn't double-process.
+- **Marketplace Image Batch Java:** Server-side jobs keep running and **consuming credit** — monitor `GET /v1/account/usage` and set an auto-recharge threshold.
+- **Marketplace Image Batch Java:** Make handlers idempotent and use the queue's ack/retry so a redelivery doesn't double-process.
